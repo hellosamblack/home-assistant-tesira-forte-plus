@@ -1,12 +1,15 @@
 {
   "domain": "tesira_forte",
   "name": "Biamp Tesira Forte",
-  "codeowners": ["@itskevinb"],
+  "codeowners": [
+    "@itskevinb",
+    "@hellosamblack"
+  ],
   "config_flow": true,
-  "documentation": "https://github.com/itskevinb/home-assistant-tesira-forte",
+  "documentation": "https://github.com/hellosamblack/home-assistant-tesira-forte-plus",
   "integration_type": "hub",
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/itskevinb/home-assistant-tesira-forte/issues",
+  "issue_tracker": "https://github.com/hellosamblack/home-assistant-tesira-forte-plus/issues",
   "requirements": [],
-  "version": "0.3.0"
+  "version": "0.4.0"
 }

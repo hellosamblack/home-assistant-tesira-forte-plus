@@ -28,7 +28,14 @@ _LOGGER = logging.getLogger(__name__)
 _IAC = 255
 _WILL, _WONT, _DO, _DONT = 251, 252, 253, 254
 
-_PUBLISH_RE = re.compile(r'^!\s+"([^"]+)"\s+(.*)$')
+# A subscription push. With ``SESSION set verbose false`` (what this client
+# sets) it is ``! "<token>" <value>``; verbose mode labels both fields
+# (``! "publishToken":"<token>" "value":<value>``). The value is a scalar
+# (``false``, ``-12.5``), a quoted string, or a bracketed array for packed
+# attributes such as a meter's ``levels`` (``[-100.000000 -99.5]``).
+_PUBLISH_RE = re.compile(
+    r'^!\s+(?:"publishToken":)?"([^"]+)"\s+(?:"value":)?(.*)$'
+)
 _FAULT_RE = re.compile(r'\[(\d+)\s+"([^"]*)"')
 
 PublishCb = Callable[[str, str], None]
@@ -38,6 +45,20 @@ FaultCb = Callable[[list[tuple[int, str]]], None]
 # answers commands in order, so the next +OK/-ERR would be that stale reply.
 # Before the next correlated command we wait this long for it and drop it.
 _LATE_REPLY_GRACE = 3.0
+
+
+def parse_array(value: str) -> list[str]:
+    """Split a TTP array value (``[a b c]``) into its elements."""
+    return value.strip().strip("[]").split()
+
+
+def join_cmd(*parts: object) -> str:
+    """Join command words, dropping empty ones (index-less attributes)."""
+    return " ".join(str(p) for p in parts if p != "" and p is not None)
+
+
+def idx_str(idx: tuple[int, ...]) -> str:
+    return " ".join(str(i) for i in idx)
 
 
 class TTPError(Exception):
@@ -312,29 +333,38 @@ class TesiraTTP:
         self, block: str, attr: str, idx: tuple[int, ...], token: str,
         rate_ms: int | None = None,
     ) -> None:
-        idx_str = " ".join(str(i) for i in idx)
-        rate = f" {rate_ms}" if rate_ms else ""
-        await self._send_raw(f'{block} subscribe {attr} {idx_str} "{token}"{rate}')
+        await self._send_raw(
+            join_cmd(block, "subscribe", attr, idx_str(idx), f'"{token}"', rate_ms)
+        )
 
-    async def set_value(
-        self, block: str, attr: str, idx: tuple[int, ...], value: str
-    ) -> None:
-        idx_str = " ".join(str(i) for i in idx)
+    async def command(self, line: str, timeout: float = 3.0) -> str:
+        """Send a correlated non-get command (set, recallPreset, ...).
+
+        Returns the +OK payload (usually empty); raises TTPError on -ERR and
+        TimeoutError if no reply arrives.
+        """
         async with self._cmd_lock:
             await self._await_late_replies()
             loop = asyncio.get_running_loop()
             self._reply = loop.create_future()
             self._reply_wants_value = False
             try:
-                await self._send_raw(f"{block} set {attr} {idx_str} {value}")
-                await asyncio.wait_for(self._reply, 3.0)
-            except asyncio.TimeoutError as err:
+                await self._send_raw(line)
+                return await asyncio.wait_for(self._reply, timeout)
+            except asyncio.TimeoutError:
                 self._note_late_reply()
-                _LOGGER.debug("set %s %s %s: %s", block, attr, idx_str, err)
-            except TTPError as err:
-                _LOGGER.debug("set %s %s %s: %s", block, attr, idx_str, err)
+                raise
             finally:
                 self._reply = None
+
+    async def set_value(
+        self, block: str, attr: str, idx: tuple[int, ...], value: str
+    ) -> None:
+        line = join_cmd(block, "set", attr, idx_str(idx), value)
+        try:
+            await self.command(line)
+        except (asyncio.TimeoutError, TTPError) as err:
+            _LOGGER.debug("%s: %s", line, err)
 
     # -- one-shot session for the config flow --------------------
     @classmethod

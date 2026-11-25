@@ -6,6 +6,10 @@ seeing which attributes it accepts. Blocks that expose none of the attributes
 this integration knows how to drive (EQ / filter / generator / AEC-processing
 blocks) are skipped. Discovery errs toward *including* a block - the user
 reviews and trims the result in the setup step.
+
+Once the entry is loaded, discovery runs on the coordinator's live session
+(the Tesira's Telnet server copes badly with a second session); a one-shot
+session is only opened during initial setup.
 """
 
 from __future__ import annotations
@@ -23,10 +27,17 @@ _ALIAS_RE = re.compile(r'"([^"]+)"')
 _SKIP_TAGS = frozenset({"DEVICE", "SESSION"})
 
 
-async def _try(client: TesiraTTP, cmd: str) -> str | None:
+# Per-probe timeout. An unsupported attribute answers -ERR at once, so this
+# only matters when the unit is slow; ~31 aliases x several probes each.
+PROBE_TIMEOUT = 3.0
+
+
+async def _try(
+    client: TesiraTTP, cmd: str, timeout: float = PROBE_TIMEOUT
+) -> str | None:
     """Return the ``get`` payload, or None if the attribute isn't supported."""
     try:
-        return await client.get_value(cmd, timeout=5)
+        return await client.get_value(cmd, timeout=timeout)
     except (TTPError, TimeoutError):
         return None
     except Exception:  # noqa: BLE001
@@ -59,7 +70,7 @@ async def _classify(client: TesiraTTP, tag: str) -> dict | None:
             return {"tag": tag, "kind": "standardmixer", "inputs": n_in, "outputs": n_out}
         return None  # crossover, router, etc. - no crosspoints to expose
 
-    # --- channel block? gain+phantom / level+mute / level / mute --
+    # --- channel block? gain+phantom / level+mute / meter / mute / dynamics
     n_ch = _as_int(await _try(client, f"{tag} get numChannels"))
     if n_ch:
         has_gain = await _try(client, f"{tag} get gain 1") is not None
@@ -71,9 +82,16 @@ async def _classify(client: TesiraTTP, tag: str) -> dict | None:
         elif has_level and has_mute:
             kind = "level"
         elif has_level:
-            kind = "meter"
+            # Signal Present meters also answer `level`; tell them apart.
+            if await _try(client, f"{tag} get present 1") is not None:
+                kind = "signalpresent"
+            else:
+                kind = "meter"
         elif has_mute:
             kind = "mute"
+        elif not has_gain and await _try(client, f"{tag} get bypass") is not None:
+            # Noise Gate / Ducker / Compressor ...: bypass, no level or mute.
+            return {"tag": tag, "kind": "dynamics"}
         else:
             return None  # EQ / filter / generator - nothing drivable here
         return {"tag": tag, "kind": kind, "channels": n_ch}
@@ -105,8 +123,32 @@ async def discover_design(client: TesiraTTP) -> list[dict]:
     return design
 
 
+def merge_design(discovered: list[dict], existing: list[dict] | None) -> list[dict]:
+    """Keep the user's hand edits across a re-discover.
+
+    A discovered block whose tag and kind match an existing entry keeps that
+    entry's extra fields ("rate_ms", "controls", ...); the device's sizes win.
+    The "presets" entry isn't discoverable, so it is carried over as is.
+    """
+    old = {
+        blk.get("tag"): blk for blk in existing or [] if blk.get("kind") != "presets"
+    }
+    merged: list[dict] = []
+    for blk in discovered:
+        prev = old.get(blk["tag"])
+        if prev is not None and prev.get("kind") == blk["kind"]:
+            merged.append({**prev, **blk})
+        else:
+            merged.append(blk)
+    merged += [blk for blk in existing or [] if blk.get("kind") == "presets"]
+    return merged
+
+
 async def discover(host: str, port: int) -> tuple[str, list[dict]]:
-    """Open a one-shot session: return (serial number, discovered design)."""
+    """Open a one-shot session: return (serial number, discovered design).
+
+    Initial setup only - a loaded entry discovers on its live session.
+    """
     async with TesiraTTP.oneshot(host, port) as client:
         serial = await client.get_value("DEVICE get serialNumber", timeout=8)
         design = await discover_design(client)

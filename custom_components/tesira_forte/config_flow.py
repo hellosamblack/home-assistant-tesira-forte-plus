@@ -9,6 +9,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.config_entries import (
+    ConfigEntryState,
     ConfigFlow,
     ConfigFlowResult,
     OptionsFlow,
@@ -22,7 +23,7 @@ from homeassistant.helpers.selector import (
 
 from .const import CONF_DESIGN, DEFAULT_DESIGN, DEFAULT_PORT, DOMAIN
 from .coordinator import DesignError, validate_design
-from .discovery import discover
+from .discovery import discover, discover_design, merge_design
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -146,23 +147,37 @@ class TesiraForteOptionsFlow(OptionsFlow):
         if user_input is not None:
             current = user_input[CONF_DESIGN]
             if user_input.get("rediscover"):
-                try:
-                    _serial, design = await discover(
-                        self.config_entry.data[CONF_HOST],
-                        self.config_entry.data.get(CONF_PORT, DEFAULT_PORT),
-                    )
-                except Exception as err:  # noqa: BLE001
-                    _LOGGER.debug("re-discover failed: %s", err)
-                    errors["base"] = "cannot_connect"
+                # Probe over the integration's own session: a second Telnet
+                # session to the Tesira times out while the first is busy.
+                entry = self.config_entry
+                coordinator = (
+                    getattr(entry, "runtime_data", None)
+                    if entry.state is ConfigEntryState.LOADED
+                    else None
+                )
+                design: list[dict] = []
+                if coordinator is None or not coordinator.ttp.connected:
+                    errors["base"] = "not_connected"
                 else:
-                    if design:
-                        current = design
-                        placeholders["error_detail"] = (
-                            f"Re-discovered {len(design)} block(s). "
-                            "Review and submit to save."
-                        )
+                    try:
+                        design = await discover_design(coordinator.ttp)
+                    except Exception as err:  # noqa: BLE001
+                        _LOGGER.debug("re-discover failed: %s", err)
+                        errors["base"] = "cannot_connect"
                     else:
-                        errors["base"] = "cannot_discover"
+                        if not design:
+                            errors["base"] = "cannot_discover"
+                if design:
+                    # Keep hand edits (rate_ms, controls, presets) from the
+                    # text box, or from the saved options if it doesn't parse.
+                    existing, _key, _detail = _parse_design(_design_text(current))
+                    current = merge_design(
+                        design, existing or entry.options.get(CONF_DESIGN)
+                    )
+                    placeholders["error_detail"] = (
+                        f"Re-discovered {len(design)} block(s). "
+                        "Review and submit to save."
+                    )
             else:
                 parsed, err_key, detail = _parse_design(current)
                 if parsed is None:

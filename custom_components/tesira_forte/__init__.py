@@ -20,6 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 type TesiraConfigEntry = ConfigEntry[TesiraForte]
 
 PLATFORMS: list[Platform] = [
+    Platform.BUTTON,
     Platform.NUMBER,
     Platform.SWITCH,
     Platform.SENSOR,

@@ -1,4 +1,5 @@
-"""Switch entities: phantom power, mixer mutes, and mixer routing crosspoints."""
+"""Switch entities: phantom power, mutes, mixer routing crosspoints, and
+dynamics blocks ("<tag> active", which is on when the block is not bypassed)."""
 
 from __future__ import annotations
 
@@ -9,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import TesiraConfigEntry
+from .coordinator import is_true
 from .entity import TesiraEntity
 
 
@@ -30,13 +32,17 @@ class TesiraSwitch(TesiraEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool | None:
-        raw = self.coordinator.data.get(self.spec.token)
+        raw = is_true(self.coordinator.data.get(self.spec.token))
         if raw is None:
             return None
-        return raw.strip().lower() == "true"
+        return raw != self.spec.invert
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        await self.coordinator.async_set(self.spec, "true")
+        await self.coordinator.async_set(
+            self.spec, "false" if self.spec.invert else "true"
+        )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        await self.coordinator.async_set(self.spec, "false")
+        await self.coordinator.async_set(
+            self.spec, "true" if self.spec.invert else "false"
+        )

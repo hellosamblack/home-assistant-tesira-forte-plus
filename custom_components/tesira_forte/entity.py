@@ -23,6 +23,7 @@ class TesiraEntity(Entity):
             self._attr_name = spec.name
             if spec.icon:
                 self._attr_icon = spec.icon
+            self._attr_entity_registry_enabled_default = spec.enabled_default
 
     @property
     def device_info(self) -> DeviceInfo:
