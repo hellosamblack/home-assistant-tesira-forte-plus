@@ -328,3 +328,26 @@ def test_merge_design_keeps_hand_edits():
         {"tag": "New", "kind": "level", "channels": 1},
         {"kind": "presets", "presets": [{"id": 1}]},
     ]
+
+
+# -- translations ---------------------------------------------------------------
+def test_flow_descriptions_have_only_identifier_placeholders():
+    """HA rejects a description whose {...} isn't an identifier (hassfest and
+    MALFORMED_ARGUMENT at runtime), so JSON examples can't go in strings.json."""
+    import json
+    import re
+    from pathlib import Path
+
+    def strings(node):
+        if isinstance(node, dict):
+            for v in node.values():
+                yield from strings(v)
+        elif isinstance(node, str):
+            yield node
+
+    root = Path(__file__).parents[1] / "custom_components" / "tesira_forte"
+    for name in ("strings.json", "translations/en.json"):
+        data = json.loads((root / name).read_text(encoding="utf-8"))
+        for text in strings(data):
+            for ph in re.findall(r"\{([^}]*)\}", text):
+                assert re.fullmatch(r"[A-Za-z_]\w*", ph), (name, ph)

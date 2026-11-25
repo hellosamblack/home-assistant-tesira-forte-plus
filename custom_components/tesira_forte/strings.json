@@ -11,7 +11,7 @@
       },
       "design": {
         "title": "Confirm the DSP design",
-        "description": "Read {count} controllable block(s) from the running design. Review or trim the JSON list below, then submit. Each entry needs a tag (the block's instance tag), a kind, and its size: aecinput, input, meter, signalpresent, level and mute take channels; standardmixer and matrixmixer take inputs and outputs; dynamics takes optional controls (threshold, releaseTime, duckingLevel). meter and signalpresent accept an optional rate_ms (100-60000). One optional entry of kind presets lists device presets as buttons: {\"kind\": \"presets\", \"presets\": [{\"id\": 1001, \"name\": \"Default\"}]}. {error_detail}",
+        "description": "Read {count} controllable block(s) from the running design. Review or trim the JSON list below, then submit. Each entry needs a tag (the block's instance tag), a kind, and its size: aecinput, input, meter, signalpresent, level and mute take channels; standardmixer and matrixmixer take inputs and outputs; dynamics takes optional controls (threshold, releaseTime, duckingLevel). meter and signalpresent accept an optional rate_ms (100-60000). One optional entry of kind presets lists device presets as buttons: give it a presets list of objects, each with an id and/or a name (see the README). {error_detail}",
         "data": {
           "design": "Design (JSON)"
         }
@@ -31,7 +31,7 @@
     "step": {
       "init": {
         "title": "DSP design",
-        "description": "The DSP blocks to expose, as a JSON list. Each entry needs a tag, a kind, and size fields: aecinput, input, meter, signalpresent, level and mute take channels; standardmixer and matrixmixer take inputs and outputs; dynamics takes optional controls (threshold, releaseTime, duckingLevel). meter and signalpresent accept an optional rate_ms (100-60000). One optional entry of kind presets lists device presets as buttons: {\"kind\": \"presets\", \"presets\": [{\"id\": 1001, \"name\": \"Default\"}]}. Instance tags come from Tesira software (right-click a block, then Properties). Tick Re-discover from device to pull the current design from the Tesira over the integration's open session; your rate_ms, controls and presets are kept. {error_detail}",
+        "description": "The DSP blocks to expose, as a JSON list. Each entry needs a tag, a kind, and size fields: aecinput, input, meter, signalpresent, level and mute take channels; standardmixer and matrixmixer take inputs and outputs; dynamics takes optional controls (threshold, releaseTime, duckingLevel). meter and signalpresent accept an optional rate_ms (100-60000). One optional entry of kind presets lists device presets as buttons: give it a presets list of objects, each with an id and/or a name (see the README). Instance tags come from Tesira software (right-click a block, then Properties). Tick Re-discover from device to pull the current design from the Tesira over the integration's open session; your rate_ms, controls and presets are kept. {error_detail}",
         "data": {
           "design": "Design (JSON)",
           "rediscover": "Re-discover from device"
